@@ -2,6 +2,24 @@
 """
 Script for running multi-agent tracking simulation and visualization
 Also used for defining ROS setup (to be added)
+
+用于分析和可视化大语言模型(LLM)在多机器人目标跟踪任务中的性能数据，
+主要功能是从实验结果文件中提取性能指标，并生成热力图(heatmap)来可视化不同机器人数量和目标数量组合下的LLM性能
+
+它主要关注两个方面：
+    1. 任务分配LLM的性能
+    2. 权重调整LLM的性能
+对每个方面，脚本分析两个关键指标：
+    1. 成功率（LLM生成可行解决方案的比例）
+    2. 平均令牌数（衡量计算资源消耗）
+    
+脚本生成四张热力图：
+    1. 任务LLM成功率 - 不同机器人/目标组合下任务分配的成功率
+    2. 行动LLM成功率 - 不同机器人/目标组合下权重调整的成功率
+    3. 任务LLM平均令牌数 - 任务分配所需的计算资源
+    4. 行动LLM平均令牌数 - 权重调整所需的计算资源
+    
+每张热力图都保存为PNG文件，并以{name1} {name2}.png命名，例如Task LLM Success Rate.png
 """
 import os
 import rospy
@@ -17,7 +35,13 @@ import seaborn as sns
 
 
 def plot_results():
-
+    '''
+    这是脚本的主要函数，负责：
+        1. 从指定路径读取所有实验结果文件
+        2. 解析每个文件提取关键性能指标
+        3. 构建数据矩阵用于可视化
+        4. 调用plot_grid()生成热力图
+    '''
     #results
     num_robot = []
     num_target = []
@@ -86,6 +110,9 @@ def plot_results():
 
     print(llm_results)
 
+    # 创建一个4x4矩阵，将不同机器人数量和目标数量组合下的任务成功率映射到矩阵位置
+    # 行索引: 4 - target_num // 2 (目标数量从8到2递减)
+    # 列索引: robot_num // 2 - 1 (机器人数量从2到8递增)
     task_success_matrix = np.zeros((4, 4))
     for i in range(len(llm_results)):
         robot_num = int(llm_results[i][0])
@@ -131,6 +158,16 @@ def plot_results():
 
      
 def plot_gird(matrix, name1, name2, color_map="vlag" ,range=[0.6, 1]):
+    '''
+    这个函数负责将数据矩阵可视化为热力图：
+    
+    参数：
+        matrix: 4x4的数据矩阵，行表示目标数量，列表示机器人数量
+        name1: 第一个标签名(例如"Task LLM")
+        name2: 第二个标签名(例如"Success Rate")
+        color_map: 热力图的颜色映射
+        range: 颜色映射的值范围
+    '''
 
     if matrix.shape != (4, 4):
         raise ValueError("Matrix shape must be (4, 4)")
