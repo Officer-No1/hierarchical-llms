@@ -88,8 +88,8 @@ class LLMAdaptiveServer:
         self.llm_outer_dur = config_loader.llm_outer_dur
         self.results = {}
 
-        self.client_task = openai.OpenAI(api_key=key)
-        self.client_tuning = openai.OpenAI(api_key=key)
+        self.client_task = openai.OpenAI(api_key=key, base_url="http://localhost:3700")
+        self.client_tuning = openai.OpenAI(api_key=key, base_url="http://localhost:3700")
 
 
         ######### data #########
@@ -755,15 +755,15 @@ class LLMAdaptiveServer:
         time2 = time.time()
         # check the token number
 
-        # Access the token usage
-        total_tokens = completion.usage.total_tokens
-        prompt_tokens = completion.usage.prompt_tokens
-        completion_tokens = completion.usage.completion_tokens
+        # # Access the token usage
+        # total_tokens = completion.usage.total_tokens
+        # prompt_tokens = completion.usage.prompt_tokens
+        # completion_tokens = completion.usage.completion_tokens
 
 
-        print("[task_adapter] total tokens is: ", total_tokens)
-        print("[task_adapter] prompt tokens is: ", prompt_tokens)
-        print("[task_adapter] completion tokens is: ", completion_tokens)
+        # print("[task_adapter] total tokens is: ", total_tokens)
+        # print("[task_adapter] prompt tokens is: ", prompt_tokens)
+        # print("[task_adapter] completion tokens is: ", completion_tokens)
 
 
 
@@ -796,14 +796,14 @@ class LLMAdaptiveServer:
 
         ################# evaluation #################
         self.task_total_call += 1
-        self.task_total_token += completion_tokens
+        # self.task_total_token += completion_tokens
         self.task_correct_call += is_feasible
 
-        self.task_total_prompt_token += prompt_tokens
-        self.task_avg_prompt_token = self.task_total_prompt_token / self.task_total_call
+        # self.task_total_prompt_token += prompt_tokens
+        # self.task_avg_prompt_token = self.task_total_prompt_token / self.task_total_call
 
 
-        self.task_avg_token = self.task_total_token / self.task_total_call
+        # self.task_avg_token = self.task_total_token / self.task_total_call
         self.task_correct_rate = self.task_correct_call / self.task_total_call
 
         self.task_total_time += time2 - time1
@@ -866,17 +866,18 @@ class LLMAdaptiveServer:
         time2 = time.time()
         # check the token number
 
-        # Access the token usage
-        total_tokens = completion.usage.total_tokens
-        prompt_tokens = completion.usage.prompt_tokens
-        completion_tokens = completion.usage.completion_tokens
+        # # Access the token usage
+        # completion.usage是None
+        # total_tokens = completion.usage.total_tokens
+        # prompt_tokens = completion.usage.prompt_tokens
+        # completion_tokens = completion.usage.completion_tokens
 
-        print("[weight_adapter] total tokens is: ", total_tokens)
-        print("[weight_adapter] prompt tokens is: ", prompt_tokens)
-        print("[weight_adapter] completion tokens is: ", completion_tokens)
+        # print("[weight_adapter] total tokens is: ", total_tokens)
+        # print("[weight_adapter] prompt tokens is: ", prompt_tokens)
+        # print("[weight_adapter] completion tokens is: ", completion_tokens)
 
 
-        token_num = completion_tokens
+        # token_num = completion_tokens
 
 
         #results =  Here is a new weight vector suggestion in the form of a Python list:
@@ -936,14 +937,14 @@ class LLMAdaptiveServer:
 
         ################# evaluation #################
         self.weights_total_call += 1
-        self.weights_total_token += token_num
+        # self.weights_total_token += token_num
         self.weights_correct_call += is_valid
 
-        self.weights_total_prompt_token += prompt_tokens
-        self.weights_avg_prompt_token = self.weights_total_prompt_token / self.weights_total_call
+        # self.weights_total_prompt_token += prompt_tokens
+        # self.weights_avg_prompt_token = self.weights_total_prompt_token / self.weights_total_call
 
 
-        self.weights_avg_token = self.weights_total_token / self.weights_total_call
+        # self.weights_avg_token = self.weights_total_token / self.weights_total_call
         self.weights_correct_rate = self.weights_correct_call / self.weights_total_call
 
         self.weights_total_time += time2 - time1
