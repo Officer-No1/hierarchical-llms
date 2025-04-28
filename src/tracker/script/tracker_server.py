@@ -2,6 +2,18 @@
 """
 Script for running multi-agent tracking simulation and visualization
 Also used for defining ROS setup (to be added)
+
+TrackerServer 类是一个综合性控制器，负责：
+    1. 管理跟踪任务的执行
+    2. 处理传感器数据
+    3. 发布控制指令
+    4. 可视化系统状态
+    5. 根据不同实验模式切换工作流程
+
+该服务器支持三种运行模式：
+    1. 纯仿真模式：完全在软件环境中运行
+    2. ROS仿真模式：使用ROS框架进行仿真
+    3. ROS真实硬件模式：控制实际的机器人硬件
 """
 import os
 import rospy
@@ -32,6 +44,7 @@ class TrackerServer:
 
     def __init__(self, exp_name):
         """
+        初始化过程加载实验配置文件，创建配置加载器和跟踪管理器
         exp_name: .yaml config file to read
         """
         ######### general parameters #########
@@ -139,6 +152,7 @@ class TrackerServer:
     ####Odometry Callbacks####
     def drone_odom_callback(self, msg, index):
         """
+        处理无人机的里程计数据，更新内部状态表示并发布可视化消息
         data: Crazyswarm GenericLogData
         id: int, id of the drone
         """
@@ -169,7 +183,9 @@ class TrackerServer:
     
     ####Pose Callbacks####
     def apriltag_callback(self, msg, robot_index):
-
+        '''
+        回调函数处理AprilTag检测结果，用于在真实硬件实验中识别和跟踪目标
+        '''
         time_stamp = msg.header.stamp
         #index      = msg.frame_id
 
@@ -211,13 +227,19 @@ class TrackerServer:
     
 
     def pub_waypoints(self, pos, index):
-
+        '''
+        将计算出的目标位置转换为ROS路径消息，发布给无人机控制系统
+        '''
+        
+        # 创建带有高度的目标点
         goal = np.array([pos[0], pos[1], self.config_loader.robotHeights[index]])
-
+        
+        # 创建路径消息
         path = Path()
         path.header.frame_id = self.frame_id
         path.header.stamp = rospy.Time.now()
 
+        # 添加路径点
         pose = PoseStamped()
         pose.header.frame_id = self.frame_id
         pose.header.stamp = rospy.Time.now()
@@ -232,7 +254,7 @@ class TrackerServer:
         # print(len(self.drones_waypoints_pubs))
         # print(index)
 
-
+        # 发布路径点和可视化目标
         self.drones_waypoints_pubs[index].publish(path)
         self.vis_ros.publish_goal(goal, self.drone_vis_goal_pubs[index])
         return
@@ -266,7 +288,11 @@ class TrackerServer:
         self.his_attacked_typeII_flags.append(results["attacked_typeII_flags"])
 
     def vis_sim(self):
-
+        '''
+        生成全面的可视化结果，包括地图、轨迹、攻击点和性能指标
+        '''
+        
+        # 可视化地图和危险区域
         # load map
         print(" ========= loading map =========")
         self.vis.visualize_map(self.config_loader.x_bounds)
@@ -277,12 +303,14 @@ class TrackerServer:
 
         # visualize results
         print(" ========= visualising results =========")
+        # 可视化目标和机器人轨迹
         self.vis.visualize_target(self.his_target_pos, self.config_loader.targetID)
         self.vis.visualize_robot(self.his_drone_pos, self.config_loader.robotID)
         # self.vis.plot_dyn(self.his_drone_cmd, 
         #                   self.his_drone_vel)
         self.vis.plot_cmd(self.his_drone_cmd)
 
+        # 打印性能指标
         print("typeI attacked_rate is ", \
               len(self.tracker_manager.typeI_attacked_pos) / self.tracker_manager.steps)
         print("typeII attacked_rate is ", \
@@ -294,7 +322,7 @@ class TrackerServer:
         print("total attacked typeI is ", len(self.tracker_manager.typeI_attacked_pos))
         print("total attacked typeII is ", len(self.tracker_manager.typeII_attacked_pos))
         
-        
+        # 计算轨迹长度
         accumulated_distance = 0
         for i in range(len(self.robot_ids)):
             for step in range(1, len(self.his_drone_pos)):
@@ -305,7 +333,7 @@ class TrackerServer:
               
 
 
-
+        # 可视化攻击点、跟踪误差等
         self.vis.plot_pts(self.tracker_manager.typeI_attacked_pos, "red")
         self.vis.plot_pts(self.tracker_manager.typeII_attacked_pos, "cyan")
         self.vis.plot_trace(self.tracker_manager.trace_list)
@@ -317,8 +345,11 @@ class TrackerServer:
     
     def simulation(self):
         """
+        执行纯仿真实验，定期调用LLM适配器更新系统参数
         steps: int, number of steps to run the simulation
         """
+        
+        # 初始化计数器
         # solve the problem
         print(" ========= solving problem =========")
         outer_idx = 0
@@ -330,16 +361,19 @@ class TrackerServer:
                      int(0.5 * self.config_loader.steps),
                      int(0.8 * self.config_loader.steps)]
 
-
+        # 主仿真循环
         for i in range(self.config_loader.steps):
+            # 计算一步跟踪计算结果
             results = self.tracker_manager.solve_one_step()
             self.update_results(results)
 
             #print("results are ", results)
             #print("interpolate_results are ", self.adapter.interpolate_results(results))
             ###### parameters adapter ###### 
+            # 更新LLM adapter结果
             self.adapter.update_results(results)
 
+            # 按照设定的时间间隔调用LLM更新
             if self.config_loader.llm_on: 
                 outer_idx += 1
                 # if i in human_idx:
@@ -380,8 +414,11 @@ class TrackerServer:
     
 
     def init_ros(self):
+        '''
+        初始化与ROS系统的通信接口，包括命令发布者、里程计发布者和目标可视化
+        '''
 
-        #publishers
+        # 为每个机器人创建publisher
         for i in range(len(self.robot_ids)):
 
             name = "/drone" +  str(self.robot_ids[i]) 
@@ -398,11 +435,12 @@ class TrackerServer:
             self.drone_vis_goal_pubs.append(rospy.Publisher(topic,
                                                             Marker, queue_size=10))
 
-   
+        # 为每个目标创建publisher
         for i in range(len(self.target_ids)):
             self.target_vis_odom_pubs.append(rospy.Publisher("/target" + str(self.target_ids[i]) + "/odom",
                                                             Odometry, queue_size=10))
-       
+
+        # 创建ROS可视化器
         self.vis_ros = VisualizerROS(self.frame_id,
                                      self.drone_cmd_pubs, 
                                      self.drone_vis_odom_pubs,
@@ -410,10 +448,14 @@ class TrackerServer:
         
     
     def publish_results_msg(self, results, pub):
-
+        '''
+        将内部计算结果封装成ROS消息，提供给其他节点使用，特别是LLM adaptive server
+        '''
+        # 创建结果消息
         from tracker.msg import Results
         msg = Results()
         
+        # 添加机器人位置、速度和控制命令
         for i in range(len(self.robot_ids)):
             pos = Point()
             pos.x = results["robot_pos"][i][0]
@@ -437,6 +479,7 @@ class TrackerServer:
             msg.robot_pos.append(pos)
             msg.robot_cmd.append(cmd)
 
+        # 添加目标位置
         for i in range(len(self.target_ids)):
             pos = Point()
             pos.x = results["target_pos"][i][0]
@@ -444,7 +487,7 @@ class TrackerServer:
             pos.z = 0.0
             msg.target_pos.append(pos)
 
-
+        # 添加其他状态信息（攻击标志、已知区域等）
         msg.exitflag = results["exitflag"]
         for i in range(len(self.robot_ids)):
 
@@ -476,13 +519,16 @@ class TrackerServer:
 
     def ros_simulation(self):
         """
+        在ROS环境中执行仿真，与ROS节点交互并发布结果
         setup ROS parameters
         """
+        
+        # 初始化ros节点
         rospy.init_node('tracker_server', anonymous=True)
         rate = rospy.Rate(1/self.tracker_manager.dt)
         self.init_ros()
         
-
+        # 设置航点publisher
         for i in range(len(self.robot_ids)):
             #### 2. publish to the waypoints topic
             name = "/dragonfly" + str(self.robot_ids[i])
@@ -493,18 +539,20 @@ class TrackerServer:
                                                               Path, 
                                                               queue_size=10))
 
-
+        # 结果publisher
         from tracker.msg import Results
         self.result_pub = rospy.Publisher("/server/results", Results, queue_size=10)
         
+        # 主循环
         #print(" ========= setting up ROS subscribers =========")
         while not rospy.is_shutdown() and self.tracker_manager.cur_step < self.tracker_manager.steps:
 
             #print(" ========= solving problem =========")
-
+            # 计算一步跟踪结果
             results = self.tracker_manager.solve_one_step()
             self.publish_results_msg(results, self.result_pub)
-
+            
+            # 发布航点和可视化信息
             for i in range(len(self.drone_ids)):
                 self.pub_waypoints(results["robot_pos"][i], i)
 
@@ -522,11 +570,16 @@ class TrackerServer:
         
 
     def ros_real(self):
-
+        '''
+        控制实际的硬件系统，等待初始化完成后开始跟踪任务
+        '''
+        
+        # 初始化ROS节点
         rospy.init_node('tracker_server', anonymous=True)
         rate = rospy.Rate(1/self.tracker_manager.dt)
         self.init_ros()
 
+        # 设置AprilTag消息类型和结果发布者
         from apriltag_msgs.msg import ApriltagPoseStamped
         from tracker.msg import Results
         self.result_pub = rospy.Publisher("/server/results", Results, queue_size=10)
@@ -537,12 +590,13 @@ class TrackerServer:
         # /dragonfly21/odom_tag
         # import tf
         # tf_listener = tf.TransformListener()
+        # 为每个无人机设置订阅者和发布者
         print(" ========= setting up ROS subscribers =========")
         for i, id in enumerate(self.drone_ids):
             print(f"cf{id} has index: {i}")
             name = "/dragonfly" + str(id)
 
-            #### 1. subscribe to the odom topic
+            #### 1. subscribe to the odom topic 订阅里程计
             topic = name + "/world_odom"
             print("topic is ", topic)
             self.drone_odom_subs.append(rospy.Subscriber(topic,
@@ -550,19 +604,19 @@ class TrackerServer:
                                                          functools.partial(self.drone_odom_callback, index=i)))
             
             
-            #### 2. publish to the waypoints topic
+            #### 2. publish to the waypoints topic 发布航点
             cmd_topic = name +  "/global_waypoints"
             print("cmd_topic is ", cmd_topic)
             self.drones_waypoints_pubs.append(rospy.Publisher(cmd_topic, Path, queue_size=10))
 
             
-            # #### 3. publish for visualization
-            # drone_frame_id = name + "/vis_odom"
-            # self.drone_vis_odom_pubs.append(rospy.Publisher(drone_frame_id,
-            #                                            Odometry, queue_size=10))
+            # #### 3. publish for visualization 发布可视化信息
+            drone_frame_id = name + "/vis_odom"
+            self.drone_vis_odom_pubs.append(rospy.Publisher(drone_frame_id,
+                                                            Odometry, queue_size=10))
             
 
-            #### 4. subscribe to the apriltag topic
+            #### 4. subscribe to the apriltag topic 订阅AprilTag检测
             apriltag_topic = name + "/world_apriltag_poses"
             print("apriltag_topic is ", apriltag_topic)
             self.apriltag_subs.append(rospy.Subscriber(apriltag_topic,

@@ -14,10 +14,23 @@ import yaml, time
 import re
 
 class LLMAdaptiveServer:
+    '''
+    LLMAdaptiveServer使用大语言模型动态调整两个关键参数：
+        1. 任务分配矩阵 - 决定哪个机器人追踪哪个目标
+        2. 权重向量 - 平衡控制成本、跟踪精度和安全约束
+    '''
 
     def __init__(self, config_loader, key_path):
         """
         exp_name: .yaml config file to read
+        
+        初始化阶段完成以下任务：
+            1. 加载API密钥：从secrets.yml文件读取OpenAI API密钥
+            2. 设置基础参数：从配置加载器获取机器人ID、目标ID和环境维度
+            3. 配置危险区域：设置传感和通信危险区域的参数
+            4. 初始化LLM参数：设置模型名称、最大令牌数和温度等
+            5. 设置ROS发布/订阅：初始化与ROS系统的交互接口
+            6. 初始化数据存储：创建历史数据和评估指标的存储结构
         """
         with open(key_path + "/secrets.yml", 'r') as secret_file:
             secret = yaml.safe_load(secret_file)
@@ -62,9 +75,9 @@ class LLMAdaptiveServer:
 
          
         # llm model: gpt-3.5-turbo, gpt-4o-2024-08-06, gpt-4o-mini
-        self.llm_model = "gpt-3.5-turbo"
-        self.max_token = int(50 * (self.task_ability + 2))
-        self.temperature = 0
+        self.llm_model = "gpt-3.5-turbo"                    # 使用的LLM模型
+        self.max_token = int(50 * (self.task_ability + 2))  # 根据任务复杂度调整令牌数
+        self.temperature = 0                                # 确定性输出（无随机性）
 
         if self.llm_model  == "gpt-4o-2024-08-06":
             self.max_token += 200
@@ -88,6 +101,7 @@ class LLMAdaptiveServer:
         for i in range(len(self.target_ids)):
             self.his_sub_target_odom_all.append([])
 
+        # 只有使用ros simulation 和 ros real时才需要发布下面的信息
         if config_loader.exp == "ros simulation" or config_loader.exp == "ros real":
             from tracker.msg import Results
             self.result_sub = rospy.Subscriber("server/results", Results, self.result_callback)
@@ -182,7 +196,9 @@ class LLMAdaptiveServer:
 
 
     def evaluation(self):
-
+        """
+        生成详细的评估报告
+        """
         evaluation = "Task assignment evaluation: \n"
         evaluation += "Total call: " + str(self.task_total_call) + ", "
         evaluation += "Correct call: " + str(self.task_correct_call) + ", "
@@ -462,6 +478,9 @@ class LLMAdaptiveServer:
         
     # 1 ~ 2 seconds
     def generate_task_assignment_prompt(self):
+        '''
+        专门为任务分配生成提示，描述当前任务分配和要求
+        '''
 
         #generate the prompt"
         prompt = self.interpolate_history_results()
@@ -511,7 +530,9 @@ class LLMAdaptiveServer:
         return prompt
 
     def interpolate_positions(self, results):
-        
+        '''
+        没有被调用
+        '''
         ################# robot current information
         prompt = "Drones are currently at the following positions: "
         for i in range(len(results["robot_pos"])):
@@ -528,10 +549,11 @@ class LLMAdaptiveServer:
 
     def interpolate_results(self, results):
         """
+        提示工程的关键，将系统状态转换为自然语言描述
         interpolate the results
         """
 
-        ################# robot current information
+        ################# robot current information 位置信息描述
         prompt = "Drones are currently at the following positions: "
         for i in range(len(results["robot_pos"])):
             drone_id = self.robot_ids[i]
@@ -545,7 +567,7 @@ class LLMAdaptiveServer:
             prompt += "Target " + str(target_id) + " is at " + str(rounded_pos) + ". "
         
 
-        ################# known dangerous zones 
+        ################# known dangerous zones 危险区域信息
         if self.nTypeI > 0:
             has_known_sensing = False
             sensing_known_prompt = "The known sensing zones are: "
@@ -588,7 +610,7 @@ class LLMAdaptiveServer:
             prompt += "No communication zone is in the environment. "
 
 
-        ################# the attack information
+        ################# the attack information 攻击信息
         attack_prompt = "The attack information is: "
         has_attack = False
         for i in range(len(results["attacked_typeI_flags"])):
@@ -607,7 +629,7 @@ class LLMAdaptiveServer:
 
         prompt += attack_prompt
 
-        ################## trace
+        ################## trace 跟踪误差
         prompt += "The trace of the tracking estimation error covariances matrix is "
         prompt += str(np.round(results["trace"], 5)) + " (smaller is better). "
 
@@ -618,6 +640,9 @@ class LLMAdaptiveServer:
 
 
     def extract_task_assignment_results(self, completion):
+        """
+        使用正则表达式从LLM输出中提取任务分配矩阵
+        """
 
         assignment_matrix = np.zeros((len(self.robot_ids), len(self.target_ids)))
         results = completion.choices[0].message.content
@@ -637,10 +662,12 @@ class LLMAdaptiveServer:
         print("results is: ", results)
         results = results.split("\n")
 
+        # 使用正则表达式查找分配信息
         ##find the start of the sentence by finding the drone id
         drone_num = 0
         for i in range(len(results)):
             if "Drone" in results[i]:
+                # 提取机器人ID
                 #print("results[i] is: ", results[i])
                 # result is start with "Drone"
                 
@@ -654,11 +681,15 @@ class LLMAdaptiveServer:
 
                 result = re.findall(r'Drone \d+', results[i])
                 drone_id = int(re.findall(r'\d+', result[0])[0])
+                
+                # 查找对应索引
                 drone_order = -1
                 for j in range(len(self.robot_ids)):
                     if drone_id == self.robot_ids[j]:
                         drone_order = j
                         break
+                
+                # 提取目标ID
                 # find the target ids
                 target_result = re.findall(r'Target \d+', results[i])
                 if len(target_result) == 0:
@@ -687,12 +718,15 @@ class LLMAdaptiveServer:
 
     def task_adapter(self, additional_prompt = ""):
         """
+        负责调用LLM更新任务分配矩阵
         update the drone and target positions
         """
         if self.results == {}:
             print("no results received, just return the previous assignment matrix")
             return self.assignment_matrix
         time1 = time.time()
+        
+        # 生成提示
         prompt = self.generate_task_assignment_prompt()
         # sample = openai.completions.create(engine='text-davinci-002',
         #                                    prompt=prompt,
@@ -700,7 +734,7 @@ class LLMAdaptiveServer:
         #                                    temperature=0)
         prompt += additional_prompt
 
-
+        # 调用LLM
         completion = \
         self.client_task.chat.completions.create(model=self.llm_model, 
                                                  messages = [{"role": "system", 
@@ -715,6 +749,8 @@ class LLMAdaptiveServer:
 
         
         #print("GPT3 output is: ", completion)
+        
+        # 解析结果
         assignment_matrix = self.extract_task_assignment_results(completion)
         time2 = time.time()
         # check the token number
@@ -731,7 +767,9 @@ class LLMAdaptiveServer:
 
 
 
-        ################# task certificates #################
+        ################# task certificates 验证结果可行性#################
+        # 验证每个目标至少被一个机器人追踪且每个机器人不超过能力上限
+        
         #print("assignment_matrix is: ", assignment_matrix)
         is_feasible = True
         for i in range(len(self.target_ids)):
@@ -777,6 +815,9 @@ class LLMAdaptiveServer:
 
 
     def generate_weight_prompt(self, results):
+        '''
+        专门为权重调整生成提示，描述当前权重和含义
+        '''
 
         prompt = self.interpolate_results(results)
         prompt += "The current weights for objective functions are: "
