@@ -7,17 +7,29 @@ from matplotlib.gridspec import GridSpec
 import scipy.special
 
 class Visualizer:
-
+    '''
+    Visualizer 类设计用于创建多种可视化图表，每种图表专注于系统的不同方面：
+        1. 主仿真图（Figure 1）：显示机器人和目标的轨迹、危险区域等
+        2. 命令图（Figure 2）：显示控制命令随时间的变化
+        3. 跟踪误差图（Figure 3）：显示跟踪误差的演变
+        4. 单个机器人跟踪误差图（Figure 4）：显示每个机器人的单独跟踪误差
+        5. 已知区域标志图（Figure 5）：显示机器人对危险区域的感知
+        6. 攻击和退出标志图（Figure 6）：显示系统遭受攻击的情况
+    '''
     def __init__(self, save_path):
+        '''
+        设置保存路径和生成唯一的时间戳文件名，以及设置机器人标记样式
+        '''
         self.save_path = save_path
-
         # covert into year-month-day-hour-minute-second
         self.plot_name = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
         self.robot_marker = ['-c', '-g', '-k']
     
 
     def plot_dyn(self, robot_cmd, robot_vel, size = 1):
-
+        """
+        将控制命令和实际速度并排显示，便于分析控制性能
+        """
         #only on self.fig2
         plt.figure("Robot Dynamics")  # "Robot Dynamics
 
@@ -59,6 +71,9 @@ class Visualizer:
         plt.savefig(self.save_path + 'dyn_cmd_' + self.plot_name  + '.png')
 
     def plot_pts(self, pts, color = 'cyan'):
+        """
+        在主图上绘制特殊点，如攻击点或其他兴趣点
+        """
         plt.figure("Figure 1: Simulation")
 
 
@@ -68,7 +83,9 @@ class Visualizer:
     
     
     def plot_cmd(self, robot_cmd, size = 1):
-
+        """
+        为每个机器人绘制控制命令随时间的变化，展示x和y方向的控制输入
+        """
         #only on self.fig2
         plt.figure("Figure 2: Robot Commands")  #
 
@@ -130,6 +147,14 @@ class Visualizer:
 
 
     def plot_gradient_ellipse(self, pos, length, width, color = 'green'):
+        """
+        这个方法创建了渐变填充的椭圆，用于表示危险区域：
+            1. 创建从指定颜色到透明的渐变色彩映射
+            2. 生成均匀网格点
+            3. 计算每个点到椭圆中心的标准化距离
+            4. 过滤掉椭圆外的点
+            5. 使用距离值着色显示渐变效果
+        """
         plt.figure("Figure 1: Simulation")
 
         #print ("Visualizing gradient ellipse")
@@ -167,6 +192,9 @@ class Visualizer:
  
     ### setup
     def visualize_map(self, x_bounds):
+        '''
+        绘制仿真环境的边界，创建一个2D矩形边界框
+        '''
         plt.figure("Figure 1: Simulation", figsize=(6, 6))
         plt.axis('equal')
         # has grid
@@ -189,6 +217,12 @@ class Visualizer:
 
 
     def visualize_zones(self, typeI_zones, typeII_zones, known_typeI_flags, known_typeII_flags):
+        """
+        绘制两种危险区域（传感和通信危险区）
+            1. 已知的区域用颜色标记（传感区为红色，通信区为蓝色）
+            2. 未知的区域用灰色标记
+            3. 使用渐变椭圆表示危险程度
+        """
         plt.figure("Figure 1: Simulation")
 
         ## zones is circle with mu as center and conv as radius
@@ -234,6 +268,13 @@ class Visualizer:
             plt.text(typeII_mu[i][0] + 0.05 , typeII_mu[i][1] + 0.05 , 'IIzone' + str(i), fontsize=12)
 
     def visualize_target(self, target_pos, target_ids, size = 1):
+        """
+        这个方法根据时间给轨迹点着色（从紫色到红色），以显示移动方向：
+            1. 目标的起始位置用黑色标记
+            2. 目标ID显示在起始位置旁边
+            3. 轨迹用渐变颜色表示时间变化
+        机器人轨迹绘制方法类似，但使用不同的颜色方案（从绿色到红色）
+        """
         plt.figure("Figure 1: Simulation")
 
         print ("Visualizing target")
@@ -314,6 +355,7 @@ class Visualizer:
 
     def create_animate(self, robot_pos, target_pos, robot_ids, target_ids, size = 1):
         """
+        实现了系统状态的动画可视化功能，展示机器人和目标轨迹的实时演变
         create a video
         robot_pos: nbot x dim
         target_pos: ntar x dim
@@ -363,6 +405,12 @@ class Visualizer:
 
 
     def plot_trace(self, trace_list):
+        """
+        绘制跟踪误差的演变
+            1. 使用折线图表示跟踪误差随时间的变化
+            2. x轴表示时间步长，y轴表示跟踪误差
+            3. 保存图像到指定路径
+        """
         plt.figure("Figure 3: Trace", figsize=(10, 6))
 
         #self.fig3 = plt.subplot(3, 1, 1)
@@ -372,7 +420,12 @@ class Visualizer:
         plt.savefig(self.save_path + 'trace_' + self.plot_name  + '.png')
 
     def plot_trace_single(self, trace_list_single):
-
+        """
+        绘制每个机器人的跟踪误差
+            1. 使用折线图表示跟踪误差随时间的变化
+            2. x轴表示时间步长，y轴表示跟踪误差
+            3. 保存图像到指定路径
+        """
         plt.figure("Figure 4: Trace Individual", figsize=(10, 6))
         step = len(trace_list_single[0])
         nRobot = len(trace_list_single)
@@ -385,7 +438,9 @@ class Visualizer:
         plt.savefig(self.save_path + 'trace_single_' + self.plot_name  + '.png')
 
     def plot_known_flags(self, his_known_typeI_flags, his_known_typeII_flags):
-
+        """
+        显示机器人对危险区域的感知情况随时间的变化，对每个区域类型分别绘制
+        """
         plt.figure("Figure 5: Known Zones Flags", figsize=(10, 6))
 
         step = len(his_known_typeI_flags)
@@ -431,7 +486,9 @@ class Visualizer:
  
     
     def plot_attacked_flags(self, his_attacked_typeI_flags, his_attacked_typeII_flags):
-
+        """
+        显示机器人被攻击（传感或通信失效）的情况随时间的变化
+        """
         plt.figure("Figure 6: Attacked and Exit Flags", figsize=(10, 6))
 
         step = len(his_attacked_typeI_flags)
@@ -465,6 +522,12 @@ class Visualizer:
 
         
     def plot_exitflag(self, exitflag):
+        """
+        显示系统的退出标志随时间的变化
+            1. 使用折线图表示退出标志随时间的变化
+            2. x轴表示时间步长，y轴表示退出标志
+            3. 保存图像到指定路径
+        """
         plt.figure("Figure 6: Attacked and Exit Flags", figsize=(10, 6))
         plt.subplot(3, 1, 1)
         plt.plot(np.arange(len(exitflag)), exitflag, '-o') #, markersize = 8)
