@@ -7,7 +7,7 @@ steps: 300
 frame_id: "world"
 llm_inner_dur: 3
 llm_outer_dur: 10
-llm_on: True
+llm_on: False
 
 Problem:
     robotID: [0, 1]
